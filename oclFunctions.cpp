@@ -1,6 +1,8 @@
 
 
 #include "helperFunctions.cpp"
+#include <stdio.h>
+#include <sys/stat.h>
 #if defined(__APPLE__) || defined(APPLE)
     #include <OpenCL/OpenCL.h>
 #else
@@ -13,8 +15,32 @@ cl_context ctx;
 cl_kernel kernel;
 cl_command_queue queue;
 
+char* get_kernel_source();
+
+
+char * load_program_source(const char *filename)
+{
+
+    struct stat statbuf;
+    FILE *fh;
+    char *source;
+
+    fh = fopen(filename, "r");
+    if (fh == 0)
+        return 0;
+
+    stat(filename, &statbuf);
+    source = (char *) malloc(statbuf.st_size + 1);
+    fread(source, statbuf.st_size, 1, fh);
+    source[statbuf.st_size] = '\0';
+
+    return source;
+}
+
+
 float* ocl_matrix_multiply(float A[], float B[], int ah, int ud, int bw)
 {
+    float* C = new float[ah*bw];
     cl_platform_id plat = NULL;
     cl_device_id *devices = NULL;
     cl_device_id device = NULL;
@@ -42,7 +68,7 @@ float* ocl_matrix_multiply(float A[], float B[], int ah, int ud, int bw)
 
     // Context setup
     // 1 == my device count (arbitrary)
-    ctx = clCreateContext(0, 1, device, NULL, NULL, &err_num);
+    ctx = clCreateContext(0, 1, &device, NULL, NULL, &err_num);
     if (err_num != CL_SUCCESS)
     {
         cout << "Ctx fail" << endl;
@@ -59,14 +85,22 @@ float* ocl_matrix_multiply(float A[], float B[], int ah, int ud, int bw)
 
     // prog setup
     size_t program_length;
-    char *source = oclLoadProgSource("oclKernels.cl", "", &program_length);
-    cl_program prog = clCreateProgramWithSource(ctx, 1, (const char **)&source, &program_length, &err_num);
+    char *source = load_program_source("oclKernels.cl");
+    cl_program prog = clCreateProgramWithSource(ctx, 1, (const char **)&source, NULL, &err_num);
     if (err_num != CL_SUCCESS)
     {
         cout << "compile fail" << endl;
         exit(err_num);
     }
-    free(source);
+
+    // build program
+
+    err_num = clBuildProgram(prog, 1, &device, "-cl-mad-enable", NULL, NULL);
+    if (err_num != CL_SUCCESS)
+    {
+        cout << "build fail" << endl;
+        exit(err_num);
+    }
 
     // kernel setup
     kernel = clCreateKernel(prog, "matMul", &err_num);
@@ -77,7 +111,6 @@ float* ocl_matrix_multiply(float A[], float B[], int ah, int ud, int bw)
     }
 
     // array rounding
-    float* C = new float[ah*bw];
     int pad_to = 64;
 
     int bw_round = round_up(bw, pad_to);
@@ -89,23 +122,23 @@ float* ocl_matrix_multiply(float A[], float B[], int ah, int ud, int bw)
     float* round_C = pad(C, ah, bw, pad_to);
 
     // work dim setup
-    int global_work_size = [ah_round, bw_round];
-    int local_work_size = [BLOCK_SIZE, BLOCK_SIZE];
+    size_t global_work_size[] = {ah_round, bw_round};
+    size_t local_work_size[] = {BLOCK_SIZE, BLOCK_SIZE};
 
     // buffer setup
-    cl_mem d_A = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, ah_round*ud_round*sizeof(float), round_A, err_num);
+    cl_mem d_A = clCreateBuffer(ctx, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, ah_round*ud_round*sizeof(float), round_A, &err_num);
     if (err_num != CL_SUCCESS)
     {
         cout << "make buffer fail" << endl;
         exit(err_num);
     }
-    cl_mem d_B = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, bw_round*ud_round*sizeof(float), round_B, err_num);
+    cl_mem d_B = clCreateBuffer(ctx, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, bw_round*ud_round*sizeof(float), round_B, &err_num);
     if (err_num != CL_SUCCESS)
     {
         cout << "make buffer fail" << endl;
         exit(err_num);
     }
-    cl_mem d_C = clCreateBuffer(context, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR, ah_round*bw_round*sizeof(float), round_C, err_num);
+    cl_mem d_C = clCreateBuffer(ctx, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR, ah_round*bw_round*sizeof(float), round_C, &err_num);
     if (err_num != CL_SUCCESS)
     {
         cout << "make buffer fail" << endl;
@@ -134,7 +167,7 @@ float* ocl_matrix_multiply(float A[], float B[], int ah, int ud, int bw)
     }
 
     // launch kernel
-    err_num = clEnqueueNDRangeKernel(queue, kernel, 2, 0, global_wwork_size, local_work_size, 0, NULL, NULL);
+    err_num = clEnqueueNDRangeKernel(queue, kernel, 2, 0, global_work_size, local_work_size, 0, NULL, NULL);
     if (err_num != CL_SUCCESS)
     {
         cout << "kernel launch fail" << endl;
@@ -151,21 +184,18 @@ float* ocl_matrix_multiply(float A[], float B[], int ah, int ud, int bw)
     clFinish(queue);
 
     // cleanup
-    err_num |= clReaseMemObject(d_A);
-    err_num |= clReaseMemObject(d_B);
-    err_num |= clReaseMemObject(d_C);
-    err_num |= clReaseKernel(kernel);
-    err_num |= clReaseCommandQueue(queue);
-    err_num |= clReaseProgram(prog);
-    err_num |= clReaseContext(ctx);
+    err_num |= clReleaseMemObject(d_A);
+    err_num |= clReleaseMemObject(d_B);
+    err_num |= clReleaseMemObject(d_C);
+    err_num |= clReleaseKernel(kernel);
+    err_num |= clReleaseCommandQueue(queue);
+    err_num |= clReleaseProgram(prog);
+    err_num |= clReleaseContext(ctx);
     if (err_num != CL_SUCCESS)
     {
         cout << "free fail" << endl;
         exit(err_num);
     }
-    free(d_A);
-    free(d_B);
-    free(d_C);
 
     // return results
     for (int i = 0; i < ah; i++)
@@ -175,6 +205,100 @@ float* ocl_matrix_multiply(float A[], float B[], int ah, int ud, int bw)
             C[i*bw + j] = round_C[i*bw_round + j];
         }
     }
+    /*
+    */
 
     return C;
 }
+
+char* get_kernel_source()
+{
+    return " "\
+    " #define BLOCK_SIZE 16 " \
+    "__kernel void matMul( " \
+    "                __global float* A, " \
+    "                __global float* B, " \
+    "                __global float* C, " \
+    "                int a_row_len, " \
+    "                int a_round_row_len, " \
+    "                int c_round_row_len, " \
+    "                int row_bound, " \
+    "                int col_bound) " \
+    "{ " \
+    "    int wA = a_round_row_len; " \
+    "    int wB = c_round_row_len; " \
+    " " \
+    "    // Block index " \
+    "    int bx = get_group_id(0); " \
+    "    int by = get_group_id(1); " \
+    " " \
+    "    // Thread index " \
+    "    int tx = get_local_id(0); " \
+    "    int ty = get_local_id(1); " \
+    " " \
+    "    // Index of the first sub-matrix of A processed " \
+    "    // by the block " \
+    "    int aBegin = wA * BLOCK_SIZE * by; " \
+    " " \
+    "    // Index of the last sub-matrix of A processed " \
+    "    // by the block " \
+    "    int aEnd   = aBegin + wA - 1; " \
+    " " \
+    "    // Step size used to iterate through the " \
+    "    // sub-matrices of A " \
+    "    int aStep  = BLOCK_SIZE; " \
+    " " \
+    "    // Index of the first sub-matrix of B processed " \
+    "    // by the block " \
+    "    int bBegin = BLOCK_SIZE * bx; " \
+    " " \
+    "    // Step size used to iterate through the " \
+    "    // sub-matrices of B " \
+    "    int bStep  = BLOCK_SIZE * wB; " \
+    " " \
+    "    float Csub = 0.0f; " \
+    " " \
+    "    // Loop over all the sub-matrices of A and B " \
+    "    // required to compute the block sub-matrix " \
+    "    for (int a = aBegin, b = bBegin; " \
+    "             a <= aEnd; " \
+    "             a += aStep, b += bStep) " \
+    "    { " \
+    " " \
+    "        // Declaration of the local memory array As " \
+    "        // used to store the sub-matrix of A " \
+    "        __local float As[BLOCK_SIZE][BLOCK_SIZE]; " \
+    " " \
+    "        // Declaration of the local memory array Bs " \
+    "        // used to store the sub-matrix of B " \
+    "        __local float Bs[BLOCK_SIZE][BLOCK_SIZE]; " \
+    " " \
+    "        // Load the matrices from global memory " \
+    "        // to local memory; each thread loads " \
+    "        // one element of each matrix " \
+    "        As[ty][tx] = A[a + wA * ty + tx]; " \
+    "        Bs[ty][tx] = B[b + wB * ty + tx]; " \
+    " " \
+    "        // Synchronize to make sure the matrices " \
+    "        // are loaded " \
+    "        barrier(CLK_LOCAL_MEM_FENCE); " \
+    " " \
+    "        // Multiply the two matrices together; " \
+    "        // each thread computes one element " \
+    "        // of the block sub-matrix " \
+    "        for (int k = 0; k < BLOCK_SIZE; ++k) " \
+    "            Csub += As[ty][k] * Bs[k][tx]; " \
+    " " \
+    "        // Synchronize to make sure that the preceding " \
+    "        // computation is done before loading two new " \
+    "        // sub-matrices of A and B in the next iteration " \
+    "        barrier(CLK_LOCAL_MEM_FENCE); " \
+    " " \
+    "    } " \
+    " " \
+    "    // Write the block sub-matrix to device memory; " \
+    "    // each thread writes one element " \
+    "    int c = wB * BLOCK_SIZE * by + BLOCK_SIZE * bx; " \
+    "    C[c + wB * ty + tx] = Csub; " \
+    "} ";
+ }
