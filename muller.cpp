@@ -1,4 +1,4 @@
-
+// g++ -O3 -msse2 -ffast-math -o muller muller.cpp -lOpenCL -larmadillo -fopenmp
 #include "mullib.cpp"
 #include <iostream>
 #include <cstdlib>
