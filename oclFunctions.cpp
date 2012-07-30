@@ -3,6 +3,7 @@
 #include "helperFunctions.cpp"
 #include <stdio.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #if defined(__APPLE__) || defined(APPLE)
     #include <OpenCL/OpenCL.h>
 #else
@@ -15,7 +16,7 @@ cl_context ctx;
 cl_kernel kernel;
 cl_command_queue queue;
 
-char* get_kernel_source();
+const char* get_kernel_source();
 
 
 char * load_program_source(const char *filename)
@@ -85,7 +86,7 @@ float* ocl_matrix_multiply(float A[], float B[], int ah, int ud, int bw)
 
     // prog setup
     size_t program_length;
-    char *source = load_program_source("oclKernels.cl");
+    const char *source = load_program_source("oclKernels.cl");
     cl_program prog = clCreateProgramWithSource(ctx, 1, (const char **)&source, NULL, &err_num);
     if (err_num != CL_SUCCESS)
     {
@@ -167,12 +168,23 @@ float* ocl_matrix_multiply(float A[], float B[], int ah, int ud, int bw)
     }
 
     // launch kernel
+    timeval t1, t2;
+    double elapsedTime;
+    gettimeofday(&t1, NULL);
+
     err_num = clEnqueueNDRangeKernel(queue, kernel, 2, 0, global_work_size, local_work_size, 0, NULL, NULL);
     if (err_num != CL_SUCCESS)
     {
         cout << "kernel launch fail" << endl;
         exit(err_num);
     }
+    clFinish(queue);
+    gettimeofday(&t2, NULL);
+
+    elapsedTime = (t2.tv_sec -t1.tv_sec) * 1000.0;
+    elapsedTime += (t2.tv_usec - t1.tv_usec) / 1000.0;
+
+    cout << "Multiplication: " << elapsedTime << " ms.\n";
 
     // get results
     err_num = clEnqueueReadBuffer(queue, d_C, CL_FALSE, 0, ah_round*bw_round*sizeof(float), round_C, 0, NULL, NULL);
@@ -211,7 +223,7 @@ float* ocl_matrix_multiply(float A[], float B[], int ah, int ud, int bw)
     return C;
 }
 
-char* get_kernel_source()
+const char* get_kernel_source()
 {
     return " "\
     " #define BLOCK_SIZE 16 " \

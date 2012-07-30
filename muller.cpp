@@ -19,6 +19,8 @@ int main()
     // static
     // float A[size];
 
+/*
+    */
     srand((unsigned)time(0));
 
     for (int i = 0; i < DIM1*DIM2; i++)
