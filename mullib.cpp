@@ -18,7 +18,8 @@ int matrix_multiply_test(float A[], float B[], int ah, int ud, int bw)
 
     gettimeofday(&t1, NULL);
 
-    float* goldenC = naive_matrix_multiply(A, B, ah, ud, bw);
+    float* goldenC = omp_matrix_multiply(A, B, ah, ud, bw);
+    //float* goldenC = arma_matrix_multiply(A, B, ah, ud, bw);
     /*
     for (int i = 0; i < ah; i++)
     {
