@@ -1,4 +1,5 @@
-// g++ -O3 -msse2 -ffast-math -o muller muller.cpp -lOpenCL -larmadillo -fopenmp
+// Ubuntu: g++ -O3 -msse2 -ffast-math -o muller muller.cpp -lOpenCL -larmadillo -fopenmp
+// Mac: g++ -O3 -framework OpenCL -o muller muller.cpp -larmadillo -fopenmp
 #include "mullib.cpp"
 #include <iostream>
 #include <cstdlib>
