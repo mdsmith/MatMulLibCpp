@@ -1,9 +1,4 @@
-
-
-// forward declarations
-int round_up(int number, int base);
-int round_down(int number, int base);
-float* pad(float array[], int offset, int base);
+#include "helperFunctions.h"
 
 // definitions
 int round_up(int number, int base)

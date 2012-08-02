@@ -1,4 +1,5 @@
 #include <armadillo>
+#include "armaFunctions.h"
 #include <sys/time.h>
 using namespace std;
 using namespace arma;

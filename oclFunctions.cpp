@@ -1,14 +1,14 @@
-
-
-#include "helperFunctions.cpp"
-#include <stdio.h>
+#include "helperFunctions.h"
+#include <iostream>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include "oclFunctions.h"
 #if defined(__APPLE__) || defined(APPLE)
     #include <OpenCL/OpenCL.h>
 #else
     #include <CL/opencl.h>
 #endif
+using namespace std;
 
 #define BLOCK_SIZE 16
 

@@ -1,7 +1,7 @@
-
-#include "naiveFunctions.cpp"
-#include "oclFunctions.cpp"
-#include "armaFunctions.cpp"
+#include "mullib.h"
+#include "naiveFunctions.h"
+#include "oclFunctions.h"
+#include "armaFunctions.h"
 #include <iostream>
 #include <sys/time.h>
 using namespace std;
